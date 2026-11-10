@@ -22,7 +22,7 @@ services:
       TZ: Asia/Shanghai
       # 上游站点在家庭宽带直连不可达（.com 被 DNS 污染/SNI 阻断，.ai 被限速），
       # 全部上游流量经 SSH 隧道边车从出口 VPS 出去（socks5h：域名在出口侧解析）
-      HGHUB_PROXY: socks5://tunnel:1080
+      HGHUB_PROXY: socks5h://tunnel:1080
     volumes:
       # 登录会话 / 线路选择 / 日志落盘（session.json 等，与客户端版同格式）
       - /share/Public/hghub/data:/data

@@ -46,7 +46,7 @@ cd server && cargo run --release   # 需在仓库根目录外另开终端
 SNI 被阻断；备用线路 `huangguoai.ai` 直连被限速到约 1KB/s。因此 compose 里带一个
 `proxy-tunnel` 边车：用一把**专用受限密钥**（`authorized_keys` 里限定
 `command="sleep infinity"` + no-pty，仅能做端口转发、无 shell）SSH 登录出口 VPS
-（大阪 Oracle），开 SOCKS5；服务端经 `HGHUB_PROXY=socks5://tunnel:1080` 出去
+（大阪 Oracle），开 SOCKS5；服务端经 `HGHUB_PROXY=socks5h://tunnel:1080` 出去
 （为此 server 的 reqwest 额外开了上游没有的 `socks` feature）。
 密钥放 NAS `/share/Public/hghub/tunnel/id_ed25519`（600，只读挂载），不进仓库/镜像。
 
