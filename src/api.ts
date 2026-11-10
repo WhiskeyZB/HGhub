@@ -22,11 +22,20 @@ export const platform: "android" | "ios" | "windows" | "macos" | "linux" =
 /** 移动端（安卓 / iOS）共用触屏界面 */
 export const isMobile = isAndroid || isIos;
 
+/** Web 服务版标记（`vite build --mode web` 时由 .env.web 注入 VITE_HG_WEB=1）：
+ *  媒体改走同源 HTTP（/img、/hls、/seg 由 hghub-server 提供），外链用浏览器打开。 */
+export const IS_WEB = import.meta.env.VITE_HG_WEB === "1";
+
 /** 自定义协议地址随平台不同（见 tauri `register_asynchronous_uri_scheme_protocol` 文档）：
  *  Windows / Android → `http://<scheme>.localhost`
  *  macOS / iOS / Linux → `<scheme>://localhost`
- *  Rust 侧 `src-tauri/src/lib.rs` 里改写 m3u8 用的 scheme 必须与此一致。 */
-export const LOCAL = isMacos || isIos || isLinux ? "hg://localhost" : "http://hg.localhost";
+ *  Rust 侧 `src-tauri/src/lib.rs` 里改写 m3u8 用的 scheme 必须与此一致。
+ *  Web 版无自定义协议：LOCAL 为空串，cover()/playlist() 拼出同源路径（/img?…、/hls?…）。 */
+export const LOCAL = IS_WEB
+  ? ""
+  : isMacos || isIos || isLinux
+    ? "hg://localhost"
+    : "http://hg.localhost";
 
 /** src 是否已是本地协议地址（避免在详情页把代理地址再包一层） */
 export const isLocalMedia = (src: string) => src.startsWith(`${LOCAL}/`);
@@ -114,7 +123,13 @@ export const api = {
 
   /* 更新检查：对比 GitHub Release 的 tag */
   checkUpdate: () => call<UpdateInfo>("check_update"),
-  openUrl: (url: string) => call<void>("open_url", { url }),
+  openUrl: (url: string) => {
+    if (IS_WEB) {
+      window.open(url, "_blank", "noopener");
+      return Promise.resolve();
+    }
+    return call<void>("open_url", { url });
+  },
 };
 
 /* ── 更新检查 ───────────────────────────────────────────── */

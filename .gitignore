@@ -31,3 +31,7 @@ docs/API.md
 
 # Agent instructions (local)
 AGENTS.md
+
+# Web 服务版（本 fork 改造）
+!.env.web
+server/target/

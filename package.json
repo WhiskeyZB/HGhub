@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && tsc --project tsconfig.tests.json && vite build",
+    "dev:web": "vite --mode web",
+    "build:web": "tsc --noEmit && vite build --mode web",
     "preview": "vite preview",
     "test:playback": "node scripts/test-playback.mjs",
     "test:api-loading": "node scripts/test-api-loading.mjs",

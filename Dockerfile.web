@@ -1,0 +1,30 @@
+# HGhub Web 服务版镜像：前端（vite --mode web）+ Rust 服务端（server/，不依赖 Tauri）
+# 构建：docker compose -f docker-compose.web.yml build
+# 注意：本镜像仅供自用（PolyForm Noncommercial），不要公开分发或对外提供服务。
+
+FROM node:24-slim AS frontend
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@10 --activate
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY . .
+RUN pnpm build:web
+
+FROM rust:1-slim-bookworm AS backend
+WORKDIR /build
+COPY server ./server
+WORKDIR /build/server
+RUN cargo build --release
+
+FROM debian:bookworm-slim
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=backend /build/server/target/release/hghub-server ./hghub-server
+COPY --from=frontend /app/dist ./dist
+ENV HG_PORT=8892 \
+    HG_DATA_DIR=/data \
+    HG_DIST_DIR=/app/dist
+EXPOSE 8892
+CMD ["./hghub-server"]

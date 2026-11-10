@@ -1,0 +1,19 @@
+# HGhub Web 服务版（NAS 部署）：仅局域网 / Tailscale 使用，不要把端口映射到公网。
+# NAS 上的用法：把本仓库放进 /share/Public/hghub/app 后在本目录执行
+#   docker compose -f docker-compose.web.yml up -d --build
+services:
+  hghub:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    image: hghub-web:local
+    container_name: hghub-web
+    restart: unless-stopped
+    ports:
+      # 左侧可按需改绑 NAS 的局域网地址；不要改成公网入口
+      - "8892:8892"
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      # 登录会话 / 线路选择 / 日志落盘（session.json 等，与客户端版同格式）
+      - /share/Public/hghub/data:/data
