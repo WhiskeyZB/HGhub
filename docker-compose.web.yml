@@ -8,12 +8,34 @@ services:
       dockerfile: Dockerfile.web
     image: hghub-web:local
     container_name: hghub-web
+    # QNAP 容器默认 DNS(10.0.3.1) 会把上游域名解析成 0.0.0.0 并被服务端安全策略拦截，故指定公共 DNS
+    dns:
+      - 223.5.5.5
+      - 119.29.29.29
     restart: unless-stopped
+    depends_on:
+      - tunnel
     ports:
       # 左侧可按需改绑 NAS 的局域网地址；不要改成公网入口
       - "8892:8892"
     environment:
       TZ: Asia/Shanghai
+      # 上游站点在家庭宽带直连不可达（.com 被 DNS 污染/SNI 阻断，.ai 被限速），
+      # 全部上游流量经 SSH 隧道边车从出口 VPS 出去（socks5h：域名在出口侧解析）
+      HGHUB_PROXY: socks5://tunnel:1080
     volumes:
       # 登录会话 / 线路选择 / 日志落盘（session.json 等，与客户端版同格式）
       - /share/Public/hghub/data:/data
+
+  # SSH 隧道边车：专用受限密钥（仅转发、无 shell）登录出口 VPS，提供 SOCKS5。
+  # 密钥放在 NAS 的 /share/Public/hghub/tunnel/id_ed25519（600，只读挂载），不进仓库/镜像。
+  tunnel:
+    build:
+      context: ./proxy-tunnel
+    image: hghub-tunnel:local
+    container_name: hghub-tunnel
+    restart: unless-stopped
+    environment:
+      TUNNEL_TARGET: ubuntu@140.83.81.27
+    volumes:
+      - /share/Public/hghub/tunnel:/key:ro

@@ -22,6 +22,8 @@ reqwest = { version = "0.12", default-features = false, features = [
   "brotli",
   "json",
   "charset",
+  # Web 服务版新增：让 HGHUB_PROXY 支持 socks5://（经 SSH 隧道边车出海，见 docker-compose.web.yml）
+  "socks",
 ] }
 aes = "0.8"
 base64 = "0.22"
