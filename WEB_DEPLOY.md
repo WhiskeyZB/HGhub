@@ -40,6 +40,19 @@ cd server && cargo run --release   # 需在仓库根目录外另开终端
 
 注意 `cargo run` 的工作目录决定相对路径，本地联调建议显式给绝对路径的环境变量。
 
+## 出海隧道（本部署实测必需）
+
+家庭宽带直连上游实测不可用：`huangguoai.com` 在国内 DNS 被污染（返回随机境外 IP）、
+SNI 被阻断；备用线路 `huangguoai.ai` 直连被限速到约 1KB/s。因此 compose 里带一个
+`proxy-tunnel` 边车：用一把**专用受限密钥**（`authorized_keys` 里限定
+`command="sleep infinity"` + no-pty，仅能做端口转发、无 shell）SSH 登录出口 VPS
+（大阪 Oracle），开 SOCKS5；服务端经 `HGHUB_PROXY=socks5://tunnel:1080` 出去
+（为此 server 的 reqwest 额外开了上游没有的 `socks` feature）。
+密钥放 NAS `/share/Public/hghub/tunnel/id_ed25519`（600，只读挂载），不进仓库/镜像。
+
+另外 QNAP 容器默认 DNS（10.0.3.1）会把上游域名解析成 `0.0.0.0`，会被服务端
+严格安全策略拦截，compose 已指定公共 DNS（223.5.5.5 / 119.29.29.29）。
+
 ## 已知差异（相对客户端版）
 
 - 桌面标题栏的最小化/最大化/关闭按钮在网页里无动作（浏览器窗口控制为准）。
