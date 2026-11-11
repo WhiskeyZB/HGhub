@@ -1,0 +1,17 @@
+{
+  "log": { "level": "info", "timestamp": true },
+  "inbounds": [
+    { "type": "mixed", "tag": "in", "listen": "0.0.0.0", "listen_port": 1080 }
+  ],
+  "outbounds": [
+    {
+      "type": "vless", "tag": "cloady-jp",
+      "server": "<节点地址，如 xray-2-xxxx-workspace-yyyy.cloady.io>", "server_port": 443,
+      "uuid": "<CLIENT_ID>",
+      "tls": { "enabled": true, "server_name": "<同 server>" },
+      "transport": { "type": "ws", "path": "<WS_PATH>",
+                     "headers": { "Host": "<同 server>" } }
+    }
+  ],
+  "route": { "final": "cloady-jp" }
+}

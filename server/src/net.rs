@@ -143,7 +143,14 @@ fn build_client(host: &str, addrs: &[SocketAddr]) -> Result<reqwest::Client, Str
     }
     if let Some(p) = proxy_override() {
         // 错误信息不能含原始代理 URL（其中可能有用户名/密码）。
-        let proxy = reqwest::Proxy::all(&p).map_err(|_| "HGHUB_PROXY 配置无效（已隐藏原始值）")?;
+        let mut proxy = reqwest::Proxy::all(&p).map_err(|_| "HGHUB_PROXY 配置无效（已隐藏原始值）")?;
+        // 分流：HGHUB_NOPROXY 里列的域名直连不走代理（逗号分隔，如国内可直达的封面/CDN 域名），
+        // 既省出口流量也更快；未设置时行为与之前一致（全部走代理）。
+        if let Ok(np) = std::env::var("HGHUB_NOPROXY") {
+            if !np.trim().is_empty() {
+                proxy = proxy.no_proxy(reqwest::NoProxy::from_string(&np));
+            }
+        }
         builder = builder.proxy(proxy);
     }
     builder
