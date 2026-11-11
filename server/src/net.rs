@@ -151,7 +151,7 @@ fn build_client(host: &str, addrs: &[SocketAddr]) -> Result<reqwest::Client, Str
         .map_err(|_| "无法创建 HTTP 客户端".to_string())
 }
 
-const CLIENT_TTL: Duration = Duration::from_secs(30);
+const CLIENT_TTL: Duration = Duration::from_secs(600);
 type ClientCache = HashMap<String, (Instant, Arc<reqwest::Client>)>;
 static CLIENTS: Lazy<Mutex<ClientCache>> = Lazy::new(|| Mutex::new(HashMap::new()));
 

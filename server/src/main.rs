@@ -18,8 +18,12 @@ mod network_policy;
 mod playback_log;
 mod session;
 
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
+
+use once_cell::sync::Lazy;
 
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode, Uri};
@@ -104,7 +108,98 @@ fn unit(r: Result<(), String>) -> Result<Value, String> {
 
 /* ───────────────────────── command 分发 ───────────────────────── */
 
-async fn run_cmd(api: &api::Api, cmd: &str, args: &Value) -> Result<Value, String> {
+/* 列表类只读接口的响应缓存：上游列表接口单次约 1.4s（隧道往返 + 上游处理），
+   缓存命中后本地直接返回；TTL 10 分钟与上游内容更新节奏匹配。
+   登录/注册/退出成功后整表作废，避免账号态变化后看到旧列表。 */
+static RESP_CACHE: Lazy<Mutex<HashMap<String, (Instant, Value)>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+const RESP_TTL: Duration = Duration::from_secs(600);
+const RESP_CACHE_MAX: usize = 512;
+
+fn cacheable(cmd: &str) -> bool {
+    matches!(
+        cmd,
+        "api_feed" | "api_category" | "api_rank" | "api_posts" | "api_search"
+    )
+}
+
+fn resp_cache_get(key: &str) -> Option<Value> {
+    let cache = RESP_CACHE.lock().ok()?;
+    cache
+        .get(key)
+        .filter(|(exp, _)| Instant::now() < *exp)
+        .map(|(_, v)| v.clone())
+}
+
+fn resp_cache_put(key: String, val: Value) {
+    if let Ok(mut cache) = RESP_CACHE.lock() {
+        if cache.len() >= RESP_CACHE_MAX {
+            cache.clear();
+        }
+        cache.insert(key, (Instant::now() + RESP_TTL, val));
+    }
+}
+
+fn resp_cache_clear() {
+    if let Ok(mut cache) = RESP_CACHE.lock() {
+        cache.clear();
+    }
+}
+
+async fn run_cmd(api: Arc<api::Api>, cmd: &str, args: &Value) -> Result<Value, String> {
+    run_cmd_impl(api, cmd, args, true).await
+}
+
+async fn run_cmd_impl(
+    api: Arc<api::Api>,
+    cmd: &str,
+    args: &Value,
+    prefetch: bool,
+) -> Result<Value, String> {
+    if matches!(cmd, "api_login" | "api_register" | "api_logout") {
+        let r = run_cmd_inner(&api, cmd, args).await;
+        if r.is_ok() {
+            resp_cache_clear();
+        }
+        return r;
+    }
+    if !cacheable(cmd) {
+        return run_cmd_inner(&api, cmd, args).await;
+    }
+    let key = format!("{cmd}|{args}");
+    if let Some(v) = resp_cache_get(&key) {
+        return Ok(v);
+    }
+    let r = run_cmd_inner(&api, cmd, args).await;
+    if let Ok(v) = &r {
+        resp_cache_put(key, v.clone());
+        // 预取下一页（仅一层）：翻页时大概率直接命中缓存。
+        // 注：run_cmd 链的 future 不是 Send（移植自 Tauri 的代码里有跨 await 的
+        // 非 Send 状态），tokio::spawn 用不了；预取频率低，用独立线程 +
+        // current-thread runtime 跑，互不影响主链。
+        if prefetch && matches!(cmd, "api_feed" | "api_category") {
+            if let Some(page) = args.get("page").and_then(Value::as_u64) {
+                let mut next_args = args.clone();
+                next_args["page"] = json!(page + 1);
+                let api2 = api.clone();
+                let cmd2 = cmd.to_string();
+                std::thread::spawn(move || {
+                    if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                    {
+                        rt.block_on(async move {
+                            let _ = run_cmd_impl(api2, &cmd2, &next_args, false).await;
+                        });
+                    }
+                });
+            }
+        }
+    }
+    r
+}
+
+async fn run_cmd_inner(api: &api::Api, cmd: &str, args: &Value) -> Result<Value, String> {
     use api::*;
     match cmd {
         "app_boot" => app_boot(api).await,
@@ -258,7 +353,7 @@ async fn dispatch(
         return (StatusCode::FORBIDDEN, Json(json!("origin denied"))).into_response();
     }
     let args = if args.is_object() { args } else { json!({}) };
-    match run_cmd(&st.api, &cmd, &args).await {
+    match run_cmd(st.api.clone(), &cmd, &args).await {
         Ok(v) => Json(v).into_response(),
         Err(e) => (StatusCode::BAD_REQUEST, Json(json!(e))).into_response(),
     }
