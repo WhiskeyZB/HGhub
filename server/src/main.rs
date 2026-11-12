@@ -366,11 +366,11 @@ async fn media_route(headers: HeaderMap, uri: Uri) -> Response {
     if !origin_ok(&headers) {
         return (StatusCode::FORBIDDEN, Json(json!("origin denied"))).into_response();
     }
-    let host = headers
-        .get("host")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("localhost");
-    let origin = format!("http://{host}");
+    // 改写后的分片/key 地址用根相对路径（/seg?u=…），不要拼绝对 URL：
+    // 公网经 Cloudflare Tunnel 是 HTTPS，服务端只看到 HTTP；若拼成 http:// 绝对地址，
+    // 浏览器会当作混合内容拦掉 key/分片请求（iOS 上报 networkError/keyLoadError）。
+    // 根相对路径在 HTTP（局域网）和 HTTPS（公网）下都跟随当前页面协议。
+    let origin = String::new();
     let resp = media::handle(uri.path(), uri.query().unwrap_or(""), &origin).await;
     let (parts, body) = resp.into_parts();
     Response::from_parts(parts, axum::body::Body::from(body))
