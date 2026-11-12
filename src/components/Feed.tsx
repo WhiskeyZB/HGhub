@@ -11,7 +11,7 @@ import { ArticlePanel, CommentsPanel, EpisodesPanel } from "./Panels";
 import { runBack, setBackHandler } from "../back";
 import {
   IBack, IBoltF, IChevR, IChevronDown, IChevronUp, IClose, ICommentF, ICompress, IExpand, IFileText, IHeart, IHeartF,
-  ILink, IList, ILockF, IPauseF, IPlayF, ISearch, IStar, IStarF, IVol, IVolMute,
+  ILink, IList, ILockF, INext, IPauseF, IPlayF, IPrev, ISearch, IStar, IStarF, IVol, IVolMute,
 } from "../icons";
 
 type Props = {
@@ -834,6 +834,17 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     setPanel(null);
   };
 
+  /* 上一集 / 下一集（桌面控制栏、手机全屏控制栏、竖屏底部共用） */
+  const hasPrevEp = episodes.some((e) => e.ep_num === curEp - 1);
+  const hasNextEp = episodes.some((e) => e.ep_num === curEp + 1);
+  const nextEpDisabled = !hasNextEp && index >= videoIds.length - 1;
+  const goPrevEp = () => { const pv = episodes.find((e) => e.ep_num === curEp - 1); if (pv) pickEp(pv.ep_num); };
+  const goNextEp = () => {
+    const nx = episodes.find((e) => e.ep_num === curEp + 1);
+    if (nx) pickEp(nx.ep_num);
+    else go(1);
+  };
+
   const likeCount = useMemo(() => {
     const base = meta.like;
     return base + (isLiked(curId) ? 1 : 0);
@@ -1026,11 +1037,29 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                       </div>
                       <div className="absolute inset-x-0 z-40 flex items-center gap-3 px-4"
                         style={{ bottom: rotated || vpLandscape ? 10 : "calc(var(--sab, 0px) + 10px)" }}>
+                        {episodes.length > 0 && (
+                          <button onClick={goPrevEp} disabled={!hasPrevEp} aria-label="上一集"
+                            className="hg-chip shrink-0 w-9 h-9 rounded-full flex items-center justify-center pressable disabled:opacity-40">
+                            <IPrev size={17} />
+                          </button>
+                        )}
                         <button onClick={() => videoRef.current?.toggle()}
                           className="hg-chip shrink-0 w-9 h-9 rounded-full flex items-center justify-center pressable">
                           {paused ? <IPlayF size={18} /> : <IPauseF size={17} />}
                         </button>
+                        {episodes.length > 0 && (
+                          <button onClick={goNextEp} disabled={nextEpDisabled} aria-label="下一集"
+                            className="hg-chip shrink-0 w-9 h-9 rounded-full flex items-center justify-center pressable disabled:opacity-40">
+                            <INext size={17} />
+                          </button>
+                        )}
                         <span className="shrink-0 text-[11.5px] font-semibold hg-ink-2 tabular-nums">{fmtTime(time)}</span>
+                        {episodes.length > 0 && (
+                          <button onClick={() => setPanel("episodes")} aria-label="选集"
+                            className="ml-auto shrink-0 flex items-center gap-1 px-2.5 h-8 rounded-full text-[12px] font-bold pressable hg-chip hg-ink-2">
+                            <IList size={13} />选集
+                          </button>
+                        )}
                         <button
                           onClick={() => {
                             if (speedLock) { setSpeedLock(false); return; }
@@ -1038,7 +1067,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                             const idx = seq.indexOf(rate);
                             setRate(seq[(idx + 1) % seq.length]);
                           }}
-                          className={`ml-auto shrink-0 flex items-center gap-1 px-2.5 h-8 rounded-full text-[12px] font-bold pressable ${effRate !== 1 ? "bg-primary text-on-primary" : "hg-chip hg-ink-2"}`}>
+                          className={`${episodes.length > 0 ? "" : "ml-auto "}shrink-0 flex items-center gap-1 px-2.5 h-8 rounded-full text-[12px] font-bold pressable ${effRate !== 1 ? "bg-primary text-on-primary" : "hg-chip hg-ink-2"}`}>
                           <IBoltF size={12} />{effRate}x
                         </button>
                         <span className="shrink-0 text-[11.5px] hg-ink-4 tabular-nums">{fmtTime(duration)}</span>
@@ -1235,10 +1264,24 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                     style={{ background: "linear-gradient(0deg, rgba(0,0,0,.82) 0%, rgba(0,0,0,.42) 45%, transparent 100%)" }} />
                   <p className="relative px-4 pb-2 text-[14px] font-semibold leading-snug hg-ink hg-ov-shadow clamp-2">{meta.title}</p>
                   <div className="relative pt-1.5 pb-2">
-                    <button onClick={() => setPanel("detail")}
-                      className="px-4 flex items-center gap-0.5 text-[10.5px] font-medium hg-ink hg-ov-shadow pressable">
-                      详情 · 第 {curEp} 集<IChevR size={11} />
-                    </button>
+                    <div className="px-4 flex items-center gap-2">
+                      {episodes.length > 0 && (
+                        <button onClick={goPrevEp} disabled={!hasPrevEp} aria-label="上一集"
+                          className="shrink-0 flex items-center gap-0.5 px-2.5 h-7 rounded-full text-[11.5px] font-semibold pressable hg-chip-strong hg-ink-2 disabled:opacity-40">
+                          <IPrev size={12} />上一集
+                        </button>
+                      )}
+                      <button onClick={() => setPanel("detail")}
+                        className="flex items-center gap-0.5 text-[10.5px] font-medium hg-ink hg-ov-shadow pressable">
+                        详情 · 第 {curEp} 集<IChevR size={11} />
+                      </button>
+                      {episodes.length > 0 && (
+                        <button onClick={goNextEp} disabled={nextEpDisabled} aria-label="下一集"
+                          className="shrink-0 flex items-center gap-0.5 px-2.5 h-7 rounded-full text-[11.5px] font-semibold pressable hg-chip-strong hg-ink-2 disabled:opacity-40">
+                          下一集<INext size={12} />
+                        </button>
+                      )}
+                    </div>
                     {isActive && (
                       <div className="mx-4 mt-1.5 relative" style={{ height: 22, touchAction: "none" }}
                         onPointerDown={onBarDown} onPointerMove={onBarMove} onPointerUp={onBarUp} onPointerCancel={onBarUp}>
@@ -1270,8 +1313,11 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
           visible={active && !idle}
           seekEnabled={active && !controlsLocked}
           seekKey={playKey}
-          nextDisabled={!episodes.some((e) => e.ep_num === curEp + 1) && index >= videoIds.length - 1}
-          nextTitle={episodes.some((e) => e.ep_num === curEp + 1) ? "下一集 E" : "下一部 ↓"}
+          nextDisabled={nextEpDisabled}
+          nextTitle={hasNextEp ? "下一集 E" : "下一部 ↓"}
+          prevDisabled={!hasPrevEp}
+          prevTitle="上一集"
+          onEpisodes={kind === "video" && episodes.length > 0 ? () => setPanel(panel === "episodes" ? null : "episodes") : undefined}
           onToggle={() => videoRef.current?.toggle()}
           onSeek={(t, source) => { videoRef.current?.seek(t, source); setTime(t); }}
           onSeekInteraction={(phase, input, target, pointerTarget) => videoRef.current?.trace(`seek.input.${phase}`, { input, target, pointer_target: pointerTarget })}
@@ -1282,12 +1328,21 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
           onLock={lockControls}
           onTheater={() => setTheater((v) => !v)}
           onFullscreen={toggleFull}
-          onNext={() => {
-            const nx = episodes.find((e) => e.ep_num === curEp + 1);
-            if (nx) pickEp(nx.ep_num);
-            else go(1);
-          }}
+          onPrev={episodes.length > 0 ? goPrevEp : undefined}
+          onNext={goNextEp}
         />
+      )}
+
+      {/* 横屏：右侧选集面板（复用 EpisodesPanel；竖屏仍走底部弹层） */}
+      {!isDesktop && fs && panel === "episodes" && (
+        <div className="absolute inset-0 z-50" onClick={() => setPanel(null)}>
+          <div className="absolute inset-0" style={{ background: "rgba(0,0,0,.45)" }} />
+          <div className="absolute right-0 top-0 bottom-0 w-[300px] max-w-[80%] bg-s2 elev-3 flex flex-col"
+            style={{ paddingTop: "var(--sat, 0px)", paddingBottom: "var(--sab, 0px)" }}
+            onClick={(e) => e.stopPropagation()}>
+            <EpisodesPanel videoId={curId} episodes={episodes} current={curEp} onPick={pickEp} onClose={() => setPanel(null)} />
+          </div>
+        </div>
       )}
 
       {/* 选集 / 评论：桌面停靠在右侧（画面让位），移动端底部弹层 */}
@@ -1317,7 +1372,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
             </div>
           </Sheet>
 
-          <Sheet open={panel === "detail" || panel === "episodes"} onClose={() => setPanel(null)}>
+          <Sheet open={(panel === "detail" || panel === "episodes") && !fs} onClose={() => setPanel(null)}>
             <div className="flex flex-col" style={{ height: "72vh" }}>
               {/* 双栏抽屉：详情 / 选集 */}
               <div className="shrink-0 flex items-center gap-2 px-4 pb-2">

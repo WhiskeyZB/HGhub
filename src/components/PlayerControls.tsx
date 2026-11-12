@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { fmtTime } from "../api";
 import { useSeekInput } from "../useSeekInput";
-import { ICheck, ICompress, IExpand, ILockF, INext, IPauseF, IPip, IPlayF, ITheater, IVol, IVolMute } from "../icons";
+import { ICheck, ICompress, IExpand, IList, ILockF, INext, IPauseF, IPip, IPlayF, IPrev, ITheater, IVol, IVolMute } from "../icons";
 
 type Props = {
   paused: boolean;
@@ -18,6 +18,8 @@ type Props = {
   seekKey?: string;
   nextDisabled?: boolean;
   nextTitle?: string;
+  prevDisabled?: boolean;
+  prevTitle?: string;
   onToggle: () => void;
   onSeek: (t: number, source?: string) => void;
   onSeekInteraction?: (phase: string, input: string, target: number, pointerTarget?: number) => void;
@@ -29,13 +31,15 @@ type Props = {
   onTheater?: () => void;
   onFullscreen: () => void;
   onNext?: () => void;
+  onPrev?: () => void;
+  onEpisodes?: () => void;
 };
 
 const clock = (s: number) => fmtTime(Math.max(0, s || 0)).padStart(5, "0");
 
 export default function PlayerControls({
   paused, time, duration, buffered = 0, rate, muted, volume, theater = false, fullscreen = false,
-  visible = true, seekEnabled = true, seekKey, nextDisabled = false, nextTitle = "下一个", onToggle, onSeek, onSeekInteraction, onRate, onMute, onVolume, onPip, onLock, onTheater, onFullscreen, onNext,
+  visible = true, seekEnabled = true, seekKey, nextDisabled = false, nextTitle = "下一个", prevDisabled = false, prevTitle = "上一集", onToggle, onSeek, onSeekInteraction, onRate, onMute, onVolume, onPip, onLock, onTheater, onFullscreen, onNext, onPrev, onEpisodes,
 }: Props) {
   const [speedOpen, setSpeedOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -62,12 +66,22 @@ export default function PlayerControls({
       </div>
 
       <div className="desktop-control-row">
+        {onPrev && (
+          <button className="player-control" aria-label={prevTitle} data-tooltip={prevTitle} disabled={prevDisabled} onClick={onPrev}>
+            <IPrev size={18} strokeWidth={1.7} />
+          </button>
+        )}
         <button className="player-control primary-play" aria-label={paused ? "播放" : "暂停"} data-tooltip={paused ? "播放 Space" : "暂停 Space"} onClick={onToggle}>
           {paused ? <IPlayF size={19} /> : <IPauseF size={18} />}
         </button>
         {onNext && (
           <button className="player-control" aria-label={nextTitle} data-tooltip={nextTitle} disabled={nextDisabled} onClick={onNext}>
             <INext size={18} strokeWidth={1.7} />
+          </button>
+        )}
+        {onEpisodes && (
+          <button className="player-control" aria-label="选集" data-tooltip="选集 E" onClick={onEpisodes}>
+            <IList size={18} strokeWidth={1.7} />
           </button>
         )}
         <span className="player-timecode"><span>{clock(seek.time)}</span><span className="player-time-separator">/</span>{clock(duration)}</span>
