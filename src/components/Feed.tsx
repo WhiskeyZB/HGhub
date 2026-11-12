@@ -8,7 +8,7 @@ import VideoSurface, { type VideoHandle } from "./VideoSurface";
 import PlayerControls from "./PlayerControls";
 import PlaybackLock from "./PlaybackLock";
 import { ArticlePanel, CommentsPanel, EpisodesPanel } from "./Panels";
-import { setBackHandler } from "../back";
+import { runBack, setBackHandler } from "../back";
 import {
   IBack, IBoltF, IChevR, IChevronDown, IChevronUp, IClose, ICommentF, ICompress, IExpand, IFileText, IHeart, IHeartF,
   ILink, IList, ILockF, IPauseF, IPlayF, ISearch, IStar, IStarF, IVol, IVolMute,
@@ -123,6 +123,10 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     x: number; y: number; startX: number; startY: number; t: number; timer: number | null;
     mode: "idle" | "hold" | "scrub" | "pan"; base: number; width: number; playing: boolean;
   } | null>(null);
+  /* 左边缘侧滑返回（iOS 式）：按下点在左边缘区才进入判定 */
+  const EDGE_BACK_ZONE = 24;
+  const EDGE_BACK_MIN_DX = 60;
+  const edgeBack = useRef<{ x: number; y: number; t: number } | null>(null);
 
   const curId = videoIds[index];
   const detail = details[curId];
@@ -673,6 +677,51 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     }
   };
 
+  /* —— 左边缘侧滑返回（iOS 式） ——
+     挂在根容器的捕获阶段：面板打开时触摸落在弹层上、到不了视频手势区，
+     根捕获能统一覆盖视频区和弹层区。边缘按下时 stopPropagation，
+     视频手势机收不到 pointerdown，就不会起长按计时/横拖/点按判定。
+     注意：这里不能 preventDefault——那会连带吞掉 click，边缘处的返回按钮就点不动了；
+     系统侧滑后退靠根容器的 touch-action: pan-y 压住（横向不交给浏览器）。 */
+  const doEdgeBack = () => {
+    // 与安卓返回键同级：沉浸全屏 → 浏览器全屏 → 面板 → 页面栈；最顶层什么都不做
+    if (fs) { setFs(false); return; }
+    if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); return; }
+    if (runBack()) return; // 面板打开时先关面板
+    onBack?.(); // 退栈；首页没有 onBack，什么都不做
+  };
+
+  const onEdgeDownCapture = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isDesktop || controlsLocked || !active) return;
+    if (e.pointerType !== "touch") return;
+    const x = e.clientX - e.currentTarget.getBoundingClientRect().left;
+    if (x >= EDGE_BACK_ZONE) return;
+    edgeBack.current = { x: e.clientX, y: e.clientY, t: Date.now() };
+    e.stopPropagation();
+  };
+
+  const onEdgeMoveCapture = (e: React.PointerEvent<HTMLDivElement>) => {
+    const c = edgeBack.current;
+    if (!c) return;
+    if (pinchRef.current) { edgeBack.current = null; return; }
+    const dx = e.clientX - c.x;
+    const dy = e.clientY - c.y;
+    // 纵向为主：当成滚动，取消候选
+    if (Math.abs(dy) > 60 && Math.abs(dy) > Math.abs(dx) * 1.2) edgeBack.current = null;
+  };
+
+  const onEdgeUpCapture = (e: React.PointerEvent<HTMLDivElement>) => {
+    const c = edgeBack.current;
+    edgeBack.current = null;
+    if (!c) return;
+    if (Date.now() - c.t > 5000) return; // 兜底：过期候选不触发
+    const dx = e.clientX - c.x;
+    const dy = e.clientY - c.y;
+    if (dx > EDGE_BACK_MIN_DX && Math.abs(dx) > Math.abs(dy) * 1.2) doEdgeBack();
+  };
+
+  const onEdgeCancelCapture = () => { edgeBack.current = null; };
+
   useEffect(() => {
     if (!active || controlsLocked) onUp(undefined, true);
     // Cancel pending gestures when the page is hidden or controls are locked.
@@ -682,6 +731,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
   useEffect(() => () => {
     if (gesture.current?.timer) window.clearTimeout(gesture.current.timer);
     gesture.current = null;
+    edgeBack.current = null;
   }, [playKey]);
 
   const lockControls = () => { setPanel(null); setControlsLocked(true); };
@@ -802,6 +852,11 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
   return (
     <div
       className={`hg-player-ui absolute inset-0 overflow-hidden bg-black player-root ${controlsLocked ? "is-locked" : ""} ${isDesktop ? "player-surface" : ""} ${theater ? "is-theater" : ""} ${isDesktop && idle ? "is-idle" : ""}`}
+      style={{ touchAction: "pan-y" }}
+      onPointerDownCapture={onEdgeDownCapture}
+      onPointerMoveCapture={onEdgeMoveCapture}
+      onPointerUpCapture={onEdgeUpCapture}
+      onPointerCancelCapture={onEdgeCancelCapture}
       onPointerMove={() => { if (isDesktop) wake(); }}>
       <div className="absolute inset-0" inert={controlsLocked}>
       {/* 氛围背景（全屏时隐藏，避免透出封面底图） */}
