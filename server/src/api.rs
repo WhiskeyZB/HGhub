@@ -24,6 +24,12 @@ impl Api {
         edge(&origin, "GET", path, None, token.as_deref()).await
     }
 
+    async fn post(&self, path: &str, body: Value) -> Result<Value, String> {
+        let origin = base();
+        let token = self.session.token(&origin);
+        edge(&origin, "POST", path, Some(body), token.as_deref()).await
+    }
+
     async fn authed(&self, method: &str, path: &str, body: Option<Value>) -> Result<Value, String> {
         let origin = base();
         let token = self
@@ -337,9 +343,51 @@ pub async fn api_video(state: &Api, id: i64) -> Result<Value, String> {
 }
 
 pub async fn api_play(state: &Api, id: i64, ep: u32) -> Result<Value, String> {
+    // 新播放接口优先（官方 App 同款）：POST /api/videos/{id}/episodes/{ep}/playback，body {}。
+    // 旧 GET /api/videos/{id}/play 目前只返回空媒体字段；新接口返回 data.streams.main（真实 m3u8）。
+    // 新接口无地址或报错时回退旧接口；旧字段（video_api/video_key/video_iv/media_id）原样透传。
+    if let Ok(v) = state
+        .post(
+            &format!("/api/videos/{id}/episodes/{ep}/playback"),
+            json!({}),
+        )
+        .await
+    {
+        if let Some(url) = play_main_url(&v) {
+            let mut out = v.clone();
+            if let Some(obj) = out.as_object_mut() {
+                obj.insert("video_url".to_string(), Value::String(url.to_string()));
+                if let Some(hevc) = v
+                    .get("streams")
+                    .and_then(|s| s.get("hevc"))
+                    .and_then(|u| u.as_str())
+                    .filter(|s| !s.is_empty())
+                {
+                    obj.insert(
+                        "video_url_hevc".to_string(),
+                        Value::String(hevc.to_string()),
+                    );
+                }
+            }
+            return Ok(out);
+        }
+    }
     state
         .get(&format!("/api/videos/{id}/play?ep={ep}&page_texts=0"))
         .await
+}
+
+/// 新播放接口返回的 streams.main；兼容旧接口已有的 video_url 字段。
+fn play_main_url(v: &Value) -> Option<&str> {
+    v.get("streams")
+        .and_then(|s| s.get("main"))
+        .and_then(|u| u.as_str())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            v.get("video_url")
+                .and_then(|u| u.as_str())
+                .filter(|s| !s.is_empty())
+        })
 }
 
 /* ───────────────────────── 评论 / 互动 ───────────────────────── */
