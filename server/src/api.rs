@@ -486,7 +486,8 @@ mod tests {
     #[test]
     fn frontend_cannot_bypass_url_policy_with_opener_commands() {
         let capability: Value =
-            serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
+            serde_json::from_str(include_str!("../../src-tauri/capabilities/default.json"))
+                .unwrap();
         for permission in capability["permissions"].as_array().unwrap() {
             let name = permission
                 .as_str()

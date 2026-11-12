@@ -10,6 +10,7 @@
 //! 会话与线路状态落盘在 HG_DATA_DIR（与客户端版同格式：session.json / 线路文件 / debug.log）。
 
 mod api;
+mod auto_account;
 mod lines;
 mod logging;
 mod media;
@@ -394,6 +395,24 @@ async fn main() {
     playback_log::bind(&data);
     api.session.bind(data.clone());
     let state = AppState { api: Arc::new(api) };
+
+    // 自动账号：无有效登录态时自动注册新号并登录（HGHUB_AUTO_ACCOUNT=force
+    // 可强制换号）；上游不稳时只记日志、不阻塞启动（逻辑见 auto_account.rs）。
+    // 注：run_cmd 链的 future 不是 Send，用独立线程 + current-thread runtime 跑。
+    {
+        let api_for_auto = state.api.clone();
+        let data_for_auto = data.clone();
+        std::thread::spawn(move || {
+            if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                rt.block_on(async move {
+                    auto_account::ensure_on_startup(&api_for_auto, &data_for_auto).await;
+                });
+            }
+        });
+    }
 
     let app = Router::new()
         .route("/healthz", get(|| async { "ok" }))
