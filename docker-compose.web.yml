@@ -1,6 +1,6 @@
 # HGhub Web 服务版（NAS 部署）：仅局域网 / Tailscale 使用，不要把端口映射到公网。
 # 出口：egress 服务 = sing-box 挂 Cloady 日本节点 (VLESS+WS+TLS)；配置在 ../egress/config.json（不入仓库）。
-# 分流：HGHUB_NOPROXY 里的域名（如封面 CDN pic.drleao.cn，国内可直达）由服务端直连，不走出口。
+# 分流：HGHUB_NOPROXY 里的域名（drleao.cn 含封面/分片/key、hzjvlo.cn 含播放列表，国内可直达）由服务端直连，不走出口。
 services:
   egress:
     build:
@@ -24,7 +24,7 @@ services:
       HGHUB_PORT: "8892"
       HGHUB_DATA: /data
       HGHUB_PROXY: "socks5h://egress:1080"
-      HGHUB_NOPROXY: "pic.drleao.cn"
+      HGHUB_NOPROXY: "drleao.cn,hzjvlo.cn"
       HGHUB_STRICT: "0"
     volumes:
       - ../data:/data
