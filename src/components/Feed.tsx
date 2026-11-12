@@ -657,17 +657,17 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     if (Date.now() - g.t < 260 && moveDist < 16) {
       const now = Date.now();
       if (now - lastTapRef.current.time < 280) {
-        // 双击屏幕：切换暂停 / 播放
+        // 双击屏幕：切换清屏模式（消除或恢复所有界面控件，只显示视频内容）
         clearTapTimer();
         lastTapRef.current.time = 0;
-        videoRef.current?.toggle();
+        setClean((c) => !c);
       } else {
-        // 单击屏幕：切换清屏模式（消除或恢复所有界面控件，只显示视频内容）
+        // 单击屏幕：切换暂停 / 播放（250ms 内无第二下才生效，等确认不是双击）
         lastTapRef.current.time = now;
         clearTapTimer();
         lastTapRef.current.timer = window.setTimeout(() => {
           lastTapRef.current.timer = null;
-          setClean((c) => !c);
+          videoRef.current?.toggle();
         }, 250) as unknown as number;
       }
     }
