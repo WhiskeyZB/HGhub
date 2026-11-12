@@ -105,6 +105,8 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
   const [speedLock, setSpeedLock] = useState(false);
   const [lockArmed, setLockArmed] = useState(false);
   const holdRef = useRef(false);
+  /* 桌面长按 2x 后紧接着的那次 click 会冒到 video 上，必须吃掉，否则一松开就暂停 */
+  const suppressClickRef = useRef(false);
   const lockArmedRef = useRef(false);
   const [scrub, setScrub] = useState<{ pct: number; target: number } | null>(null);
   const scrubTarget = useRef<number | null>(null);
@@ -529,10 +531,13 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
 
   /* —— 长按 2x（上滑锁定） / 横拖定位 / 单击清屏 / 双击暂停 —— */
   const onDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (isDesktop || controlsLocked || !active || !e.isPrimary || pinchRef.current || gesture.current || e.button !== 0) return;
+    if (controlsLocked || !active || !e.isPrimary || pinchRef.current || gesture.current || e.button !== 0) return;
     const el = e.currentTarget;
     const span = rotated ? (el.clientHeight || window.innerHeight || 1) : (el.clientWidth || 1);
-    try { el.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    // 桌面端不抓取指针：抓取会改写 click 目标，导致单击切换播放/暂停失效；改由 onPointerLeave 兜底取消
+    if (!isDesktop) {
+      try { el.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    }
     const g = {
       x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY,
       t: Date.now(), base: time, width: span,
@@ -541,14 +546,18 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
       timer: window.setTimeout(() => {
         const cur = gesture.current;
         if (!cur || cur.mode !== "idle" || pinchRef.current) return;
+        // 仅在正在播放时生效：暂停时长按不做任何事
+        if (videoRef.current?.el()?.paused !== false) return;
         clearTapTimer();
         cur.mode = "hold";
         holdRef.current = true;
         setHoldSpeed(true);
+        // 桌面端：长按后随即触发的那次 click 会切到暂停，这里先记下来吃掉
+        suppressClickRef.current = true;
         setLockArmed(false);
         lockArmedRef.current = false;
         try { navigator.vibrate?.(25); } catch { /* ignore */ }
-      }, 380) as unknown as number,
+      }, 450) as unknown as number,
     };
     gesture.current = g;
   };
@@ -565,8 +574,9 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     const dx = rotated ? rawDy : rawDx;
     const dy = rotated ? -rawDx : rawDy;
 
-    /* 长按中：上滑 64px 进入「松开即锁定」 */
+    /* 长按中：上滑 64px 进入「松开即锁定」（移动端专属；桌面只做纯长按） */
     if (g.mode === "hold") {
+      if (isDesktop) return;
       const upDist = rotated ? (e.clientX - g.startX) : (g.startY - e.clientY);
       const armed = upDist > 64;
       if (armed !== lockArmedRef.current) {
@@ -577,6 +587,13 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     }
 
     if (g.mode === "idle") {
+      if (isDesktop) {
+        // 桌面端不做横拖定位/竖滑：移动超过阈值只取消长按计时
+        if (Math.abs(dx) > 16 || Math.abs(dy) > 16) {
+          if (g.timer) window.clearTimeout(g.timer);
+        }
+        return;
+      }
       if (Math.abs(dx) > 16 && Math.abs(dx) > Math.abs(dy) * 1.2) {
         clearTapTimer();
         if (g.timer) window.clearTimeout(g.timer);
@@ -608,6 +625,10 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     if (g.mode === "hold") {
       holdRef.current = false;
       setHoldSpeed(false);
+      if (isDesktop) {
+        // 指针在画面外松开时不会产生 click；兜底清掉抑制标记，避免吞掉下一次正常点击
+        window.setTimeout(() => { suppressClickRef.current = false; }, 500);
+      }
       if (!cancelled && lockArmedRef.current) {
         setSpeedLock(true);
         toast("已锁定 2.0x 倍速 · 点顶部标签解除", "info");
@@ -630,6 +651,8 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
     }
 
     if (cancelled || g.mode !== "idle") return;
+    // 桌面端单击走 video 的 onClick 切换播放/暂停，这里不处理
+    if (isDesktop) return;
     const moveDist = e ? Math.hypot(e.clientX - g.x, e.clientY - g.y) : 0;
     if (Date.now() - g.t < 260 && moveDist < 16) {
       const now = Date.now();
@@ -802,7 +825,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                 <div className={rotated ? "fs-landscape" : (!isDesktop && fs ? "fs-immersive" : "absolute inset-0")}>
                   <div
                     className="absolute inset-0 overflow-hidden"
-                    style={{ touchAction: fs || zoom.scale > 1.05 ? "none" : "pan-y" }}
+                    style={{ touchAction: fs || zoom.scale > 1.05 ? "none" : "pan-y", WebkitTouchCallout: "none", userSelect: "none" }}
                     onTouchStart={onTouchStart}
                     onTouchMove={onTouchMove}
                     onTouchEnd={onTouchEnd}
@@ -811,6 +834,8 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                     onPointerMove={onMove}
                     onPointerUp={(e) => onUp(e, false)}
                     onPointerCancel={(e) => onUp(e, true)}
+                    onPointerLeave={(e) => onUp(e, true)}
+                    onContextMenu={(e) => e.preventDefault()}
                     onLostPointerCapture={(e) => onUp(e, true)}>
                     <VideoSurface
                       ref={videoRef}
@@ -827,7 +852,10 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                       panX={zoom.x}
                       panY={zoom.y}
                       isGesturing={zoom.gesturing}
-                      onClick={() => { if (isDesktop) videoRef.current?.toggle(); }}
+                      onClick={() => {
+                        if (suppressClickRef.current) { suppressClickRef.current = false; return; }
+                        if (isDesktop) videoRef.current?.toggle();
+                      }}
                       onTime={onTimeTick}
                       onDuration={onDurationTick}
                       onSize={(w, h) => setVsize({ w, h })}
@@ -894,6 +922,14 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                       style={{ top: "38%" }}>
                       <ILockF size={16} />
                       <span className="text-[12.5px] font-bold">{lockArmed ? "松开锁定 2.0x" : "上滑到此锁定倍速"}</span>
+                    </div>
+                  )}
+                  {isDesktop && holdSpeed && (
+                    <div
+                      className="absolute left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-4 h-10 rounded-xl backdrop-blur-md elev-2 hg-chip-strong hg-ink-2 pointer-events-none"
+                      style={{ top: "38%" }}>
+                      <IBoltF size={16} />
+                      <span className="text-[12.5px] font-bold">2x 倍速中 · 松开恢复</span>
                     </div>
                   )}
 
