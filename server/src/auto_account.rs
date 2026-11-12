@@ -186,28 +186,39 @@ async fn verify_token_once(origin: &str, token: &str) -> Result<i64, String> {
         .get("id")
         .and_then(|v| v.as_i64())
         .ok_or_else(|| "验证账号返回缺少 id".to_string())?;
-    let play = edge(
-        origin,
-        "POST",
-        &format!("/api/videos/{VERIFY_VIDEO_ID}/episodes/0/playback"),
-        Some(json!({})),
-        Some(token),
-    )
-    .await?;
-    let main = play
-        .get("streams")
-        .and_then(|s| s.get("main"))
-        .and_then(|u| u.as_str())
-        .filter(|s| !s.is_empty())
-        .or_else(|| {
-            play.get("video_url")
-                .and_then(|u| u.as_str())
-                .filter(|s| !s.is_empty())
-        });
-    match main {
-        Some(_) => Ok(user_id),
-        None => Err("验证播放未拿到播放地址".into()),
+    // 分集从 1 开始编号（2833 有 13 集，ep_num 1..13；ep=0 会报“分集参数无效”）；
+    // 兼容起见 1 失败时再试 0。
+    let mut last_err = "验证播放未拿到播放地址".to_string();
+    for ep in [1u32, 0] {
+        match edge(
+            origin,
+            "POST",
+            &format!("/api/videos/{VERIFY_VIDEO_ID}/episodes/{ep}/playback"),
+            Some(json!({})),
+            Some(token),
+        )
+        .await
+        {
+            Ok(play) => {
+                let main = play
+                    .get("streams")
+                    .and_then(|s| s.get("main"))
+                    .and_then(|u| u.as_str())
+                    .filter(|s| !s.is_empty())
+                    .or_else(|| {
+                        play.get("video_url")
+                            .and_then(|u| u.as_str())
+                            .filter(|s| !s.is_empty())
+                    });
+                if main.is_some() {
+                    return Ok(user_id);
+                }
+                last_err = "验证播放未拿到播放地址".to_string();
+            }
+            Err(e) => last_err = e,
+        }
     }
+    Err(last_err)
 }
 
 async fn verify_token(origin: &str, token: &str) -> Result<i64, String> {
