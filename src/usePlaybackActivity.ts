@@ -34,6 +34,32 @@ export function usePlaybackActivity(
     videoRef.current?.pause();
   }, []);
 
+  /* 切到后台就停声：iOS Safari 切 App/锁屏只发 visibilitychange，不会自动停视频。
+     画中画是用户特意开的后台播放，跳过。回页面不自动恢复，等用户点播。 */
+  useLayoutEffect(() => {
+    const stopForBackground = (source: string) => {
+      if (document.pictureInPictureElement) {
+        latest.current.trace("page.background_pip", { source });
+        return;
+      }
+      pause(source);
+      const hls = hlsRef.current;
+      if (hls?.levels.length) hls.stopLoad();
+      latest.current.trace("page.background_pause", { source });
+    };
+    const onVisibility = () => {
+      if (!document.hidden) return;
+      stopForBackground("background_hidden");
+    };
+    const onPageHide = () => stopForBackground("background_hide");
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", onPageHide);
+    };
+  }, [pause]);
+
   useLayoutEffect(() => {
     const v = videoRef.current;
     if (!v) return;
